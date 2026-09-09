@@ -26,7 +26,7 @@ td,th{padding:9px 5px;border-bottom:1px solid #334155;text-align:left}
 
 <div class="wrap">
 <h1>◈ TONY TRADE AI</h1>
-<p>V3.5 · Forward Paper Trading</p>
+<p>V3.5.1 · Forward Paper Trading</p>
 
 <div class="warn">
 STRATEGI TERKUNCI: Breakout 20 / Exit 10. UANG VIRTUAL SAJA. Tidak ada koneksi Pluang, tidak ada order uang asli, dan tidak ada perubahan parameter otomatis berdasarkan hasil sementara.
@@ -76,12 +76,12 @@ STRATEGI TERKUNCI: Breakout 20 / Exit 10. UANG VIRTUAL SAJA. Tidak ada koneksi P
 <div class="card">
 <h2>Kontrol</h2>
 <button onclick="resetForward()">Reset Forward Test</button>
-<p><small>Reset hanya menghapus data V3.5 pada browser ini. Data versi sebelumnya tetap terpisah.</small></p>
+<p><small>Reset hanya menghapus data V3.5.1 pada browser ini. Data versi sebelumnya tetap terpisah.</small></p>
 </div>
 
 <div class="card">
 <h2>Catatan penting</h2>
-<p>Forward test pada GitHub Pages hanya berjalan saat Anda membuka aplikasi dan menekan Refresh & Periksa Sinyal. Ini bukan server 24 jam. Sinyal yang sama tidak akan diproses dua kali karena aplikasi menyimpan tanggal candle terakhir yang sudah diproses.</p>
+<p>Forward test pada GitHub Pages hanya berjalan saat Anda membuka aplikasi dan menekan Refresh & Periksa Sinyal. Ini bukan server 24 jam. Jika pembukaan pasar terlewat, order pending dibatalkan, bukan diisi mundur. Sinyal yang sama tidak akan diproses dua kali karena aplikasi menyimpan tanggal candle terakhir yang sudah diproses.</p>
 <p><small>Harga menggunakan Binance spot USDT. Ini bukan harga Pluang dan bukan kuotasi eksekusi sebenarnya.</small></p>
 </div>
 </div>
@@ -90,7 +90,7 @@ STRATEGI TERKUNCI: Breakout 20 / Exit 10. UANG VIRTUAL SAJA. Tidak ada koneksi P
 const $=x=>document.getElementById(x);
 const money=n=>Number.isFinite(n)?new Intl.NumberFormat('id-ID',{maximumFractionDigits:2}).format(n)+' USDT':'-';
 const num=n=>new Intl.NumberFormat('id-ID',{maximumFractionDigits:8}).format(n);
-const KEY='tta-v35-forward';
+const KEY='tta-v351-forward';
 const FEE=0.001, SLIP=0.0005, MAX_ALLOC=0.20;
 
 let state = loadState();
@@ -102,6 +102,8 @@ function freshState(){
     position:null,
     journal:[],
     lastProcessed:{},
+    pending:{},
+    startedAt:Date.now(),
     lastMark:null
   };
 }
@@ -191,53 +193,61 @@ function execute(symbol,side,price,reason,signalDate){
   return false;
 }
 async function refreshAll(){
-  const symbol=$('asset').value;
-  $('status').textContent='Mengambil candle harian...';
-  try{
-    bars=await fetchBars(symbol);
-    state.lastMark=markPrice();
-    const sig=signalFor(bars);
-
-    let action='Tidak ada eksekusi.';
-    const lastDone=state.lastProcessed[symbol];
-
-    if(lastDone!==sig.date){
-      const nextBarIndex=bars.findIndex(b=>fmtDate(b.openTime)===sig.date)+1;
-      const nextBar=nextBarIndex>0 && nextBarIndex<bars.length ? bars[nextBarIndex] : null;
-
-      if(sig.signal==='BUY'){
-        if(nextBar){
-          action=execute(symbol,'BUY',nextBar.o,sig.reason,sig.date)?'BUY virtual dieksekusi pada open berikutnya.':'Sinyal BUY ada, tetapi order virtual tidak dieksekusi.';
-        }else{
-          action='Sinyal BUY baru terdeteksi, menunggu open candle berikutnya.';
-        }
-      }else if(sig.signal==='SELL'){
-        if(nextBar){
-          action=execute(symbol,'SELL',nextBar.o,sig.reason,sig.date)?'SELL virtual dieksekusi pada open berikutnya.':'Sinyal SELL ada, tetapi tidak ada posisi yang sesuai.';
-        }else{
-          action='Sinyal SELL baru terdeteksi, menunggu open candle berikutnya.';
-        }
-      }
-      state.lastProcessed[symbol]=sig.date;
-      saveState();
-    }else{
-      action='Candle ini sudah pernah diproses. Tidak ada eksekusi ulang.';
-    }
-
-    $('status').textContent='Data valid sampai '+fmtDate(bars.at(-1).openTime)+'. '+action;
-    $('signalBox').innerHTML=
-      '<p><b>'+symbol+'</b></p>'+
-      '<p>Sinyal: <b>'+sig.signal+'</b></p>'+
-      '<p>Tanggal candle: '+sig.date+'</p>'+
-      '<p>Close: '+money(sig.close)+'</p>'+
-      '<p>Highest 20 sebelumnya: '+money(sig.max20)+'</p>'+
-      '<p>Lowest 10 sebelumnya: '+money(sig.min10)+'</p>'+
-      '<p>Alasan: '+sig.reason+'</p>';
-    render();
-  }catch(e){
-    $('status').textContent='Gagal: '+e.message+'. Tidak ada transaksi virtual yang dilakukan.';
-    render();
+ const symbol=$('asset').value;
+ $('status').textContent='Memeriksa data dan antrean...';
+ try{
+  bars=await fetchBars(symbol);
+  const now=Date.now(), last=bars.at(-1);
+  const today=new Date().toISOString().slice(0,10);
+  if(fmtDate(last.openTime)>=today)throw Error('Candle hari berjalan belum final');
+  // The active position must always be marked using its own market.
+  if(state.position&&state.position.symbol!==symbol){
+   const own=await fetchBars(state.position.symbol);
+   state.lastMark=own.at(-1).c;
+  }else state.lastMark=last.c;
+  if(!state.pending)state.pending={};
+  if(!state.lastProcessed)state.lastProcessed={};
+  let messages=[];
+  // Process only candles after the forward-test start. No historical backfill.
+  const start=state.startedAt||now;
+  const first=bars.findIndex(b=>b.openTime>=start);
+  // A pending signal is executed only at the next actual daily open.
+  let pending=state.pending[symbol];
+  if(pending){
+   const next=bars.find(b=>b.openTime===pending.signalOpen+86400000);
+   if(next && next.openTime<now-60000){
+    messages.push('Sinyal kedaluwarsa: open terlewat. Tidak dieksekusi mundur.');
+    state.lastProcessed[symbol]=pending.date;
+    delete state.pending[symbol];
+   }else if(next){
+    const ok=execute(symbol,pending.side,next.o,pending.reason,pending.date);
+    messages.push(ok?pending.side+' virtual dieksekusi pada open '+fmtDate(next.openTime):'Order virtual dibatalkan: posisi atau saldo tidak sesuai.');
+    state.lastProcessed[symbol]=pending.date;
+    delete state.pending[symbol];
+   }else messages.push('Sinyal pending menunggu candle berikutnya. Aplikasi harus dibuka saat open; tidak ada server otomatis.');
   }
+  // Never retroactively fill a signal using a price that was already known.
+  if(last.closeTime>=start && !state.pending[symbol] && state.lastProcessed[symbol]!==fmtDate(last.openTime)){
+   const sig=signalFor(bars);
+   const wantsBuy=sig.signal==='BUY'&&!state.position;
+   const wantsSell=sig.signal==='SELL'&&state.position&&state.position.symbol===symbol;
+   if(wantsBuy||wantsSell){
+    state.pending[symbol]={side:sig.signal,date:sig.date,signalOpen:last.openTime,reason:sig.reason};
+    messages.push(sig.signal+' pending untuk open hari berikutnya.');
+   }else{
+    state.lastProcessed[symbol]=sig.date;
+    messages.push('Tidak ada order baru.');
+   }
+  }
+  saveState();
+  const sig=signalFor(bars);
+  $('status').textContent='Data valid sampai '+fmtDate(last.openTime)+'. '+(messages.join(' ')||'Tidak ada eksekusi ulang.');
+  $('signalBox').textContent=symbol+' | '+sig.date+' | '+sig.signal+' | '+sig.reason+(state.pending[symbol]?' | PENDING':'');
+  render();
+ }catch(e){
+  $('status').textContent='Gagal: '+e.message+'. Tidak ada transaksi virtual yang dilakukan.';
+  render();
+ }
 }
 function render(){
   const eq=equity();
@@ -250,7 +260,7 @@ function render(){
   ).join('') : '<tr><td colspan="7">Belum ada transaksi forward.</td></tr>';
 }
 function resetForward(){
-  if(confirm('Reset seluruh data forward test V3.5 pada browser ini?')){
+  if(confirm('Reset seluruh data forward test V3.5.1 pada browser ini?')){
     state=freshState();
     saveState();
     bars=[];
