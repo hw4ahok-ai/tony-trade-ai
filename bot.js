@@ -2,13 +2,22 @@ const URL = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DRY = process.env.DRY_RUN !== 'false';
 
-if (!URL || !KEY) throw new Error('Missing Supabase secrets');
+if (!URL || !KEY) {
+  throw new Error('Missing Supabase secrets');
+}
 
-const SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT'];
+const SYMBOLS = {
+  BTCUSDT: 'XBTUSDT',
+  ETHUSDT: 'ETHUSDT',
+  SOLUSDT: 'SOLUSDT'
+};
 
 async function getJson(url) {
   const r = await fetch(url, {
-    signal: AbortSignal.timeout(20000)
+    signal: AbortSignal.timeout(20000),
+    headers: {
+      'User-Agent': 'TONY-TRADE-AI/3.6.2'
+    }
   });
 
   if (!r.ok) {
@@ -17,43 +26,49 @@ async function getJson(url) {
 
   const data = await r.json();
 
-  if (data.retCode !== 0) {
-    throw new Error('Bybit retCode ' + data.retCode + ': ' + data.retMsg);
+  if (Array.isArray(data.error) && data.error.length) {
+    throw new Error('Kraken API: ' + data.error.join(', '));
   }
 
   return data;
 }
 
-async function getDailyCandles(symbol) {
+function getResultKey(result) {
+  return Object.keys(result).find(k => k !== 'last');
+}
+
+async function getDailyCandles(krakenPair) {
   const url =
-    'https://api.bybit.com/v5/market/kline' +
-    '?category=spot' +
-    '&symbol=' + symbol +
-    '&interval=D' +
-    '&limit=40';
+    'https://api.kraken.com/0/public/OHLC' +
+    '?pair=' + encodeURIComponent(krakenPair) +
+    '&interval=1440';
 
   const data = await getJson(url);
-  const rows = data?.result?.list;
+  const key = getResultKey(data.result || {});
 
-  if (!Array.isArray(rows) || rows.length < 25) {
+  if (!key) {
+    throw new Error('OHLC pair key missing');
+  }
+
+  const rows = data.result[key];
+
+  if (!Array.isArray(rows) || rows.length < 26) {
     throw new Error('Insufficient candles');
   }
 
-  const now = Date.now();
+  // Kraken selalu menyertakan candle timeframe yang sedang berjalan.
+  // Buang baris terakhir.
+  const completed = rows.slice(0, -1);
 
-  let candles = rows
+  const candles = completed
     .map(x => ({
-      t: Number(x[0]),
+      t: Number(x[0]) * 1000,
       o: Number(x[1]),
       h: Number(x[2]),
       l: Number(x[3]),
       c: Number(x[4])
     }))
     .sort((a, b) => a.t - b.t);
-
-  // Candle harian Bybit terbaru dapat masih berjalan.
-  // Hanya pakai candle yang sudah selesai.
-  candles = candles.filter(x => x.t + 86400000 <= now);
 
   if (candles.length < 25) {
     throw new Error('Insufficient completed candles');
@@ -78,20 +93,20 @@ async function getDailyCandles(symbol) {
   return candles;
 }
 
-async function getLivePrice(symbol) {
+async function getLivePrice(krakenPair) {
   const url =
-    'https://api.bybit.com/v5/market/tickers' +
-    '?category=spot' +
-    '&symbol=' + symbol;
+    'https://api.kraken.com/0/public/Ticker' +
+    '?pair=' + encodeURIComponent(krakenPair);
 
   const data = await getJson(url);
-  const ticker = data?.result?.list?.[0];
+  const key = getResultKey(data.result || {});
 
-  if (!ticker) {
-    throw new Error('Ticker missing');
+  if (!key) {
+    throw new Error('Ticker pair key missing');
   }
 
-  const price = Number(ticker.lastPrice);
+  const ticker = data.result[key];
+  const price = Number(ticker?.c?.[0]);
 
   if (!Number.isFinite(price) || price <= 0) {
     throw new Error('Invalid market price');
@@ -101,20 +116,31 @@ async function getLivePrice(symbol) {
 }
 
 async function run(symbol) {
-  const b = await getDailyCandles(symbol);
+  const krakenPair = SYMBOLS[symbol];
+
+  const b = await getDailyCandles(krakenPair);
 
   const last = b.at(-1);
   const i = b.length - 1;
 
-  const hi = Math.max(...b.slice(i - 20, i).map(x => x.h));
-  const lo = Math.min(...b.slice(i - 10, i).map(x => x.l));
+  const hi = Math.max(
+    ...b.slice(i - 20, i).map(x => x.h)
+  );
+
+  const lo = Math.min(
+    ...b.slice(i - 10, i).map(x => x.l)
+  );
 
   const side =
-    last.c > hi ? 'BUY' :
-    last.c < lo ? 'SELL' :
-    'HOLD';
+    last.c > hi
+      ? 'BUY'
+      : last.c < lo
+      ? 'SELL'
+      : 'HOLD';
 
-  const date = new Date(last.t).toISOString().slice(0, 10);
+  const date = new Date(last.t)
+    .toISOString()
+    .slice(0, 10);
 
   const reason =
     side === 'BUY'
@@ -123,7 +149,7 @@ async function run(symbol) {
       ? 'Close < previous 10-day low'
       : 'No entry or exit';
 
-  const market = await getLivePrice(symbol);
+  const market = await getLivePrice(krakenPair);
 
   const payload = {
     p_symbol: symbol,
@@ -139,6 +165,8 @@ async function run(symbol) {
     console.log(
       'DRY RUN',
       symbol,
+      'KrakenPair',
+      krakenPair,
       date,
       side,
       'close',
@@ -146,6 +174,7 @@ async function run(symbol) {
       'market',
       market
     );
+
     return;
   }
 
@@ -165,15 +194,21 @@ async function run(symbol) {
 
   if (!r.ok) {
     throw new Error(
-      'Supabase RPC ' + r.status + ' ' + await r.text()
+      'Supabase RPC ' +
+      r.status +
+      ' ' +
+      await r.text()
     );
   }
 
-  console.log(symbol, await r.json());
+  console.log(
+    symbol,
+    await r.json()
+  );
 }
 
 (async () => {
-  for (const symbol of SYMBOLS) {
+  for (const symbol of Object.keys(SYMBOLS)) {
     try {
       await run(symbol);
     } catch (e) {
