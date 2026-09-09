@@ -1,17 +1,8 @@
-# TONY TRADE AI — Demo V1
-
-Aplikasi web statis untuk menguji antarmuka dan paper trading. Gratis, tanpa dependensi dan tanpa API key.
-
-## Menjalankan
-Buka index.html di browser, atau deploy folder ini ke GitHub Pages / static hosting. Tidak diperlukan npm.
-
-## Batasan penting
-- Semua harga dan skor adalah contoh, bukan data live atau rekomendasi investasi.
-- Tidak ada model AI, prediksi terkalibrasi, backend, autentikasi sungguhan, atau integrasi Pluang.
-- Profil disimpan di localStorage dan tidak tersinkronisasi antarperangkat. Nama pengguna bukan mekanisme keamanan.
-- Paper trading memakai harga tetap, tanpa fee, spread, slippage, atau perubahan harga.
-- Stop loss dan take profit hanya dicatat, belum dieksekusi otomatis.
-- Jangan memasukkan password, PIN, OTP, atau API key broker.
-
-## Tahap berikutnya
-Backend autentikasi multi-user, database terisolasi, data pasar resmi, risk engine, backtest walk-forward, dan integrasi broker resmi setelah izin serta dokumentasi diverifikasi.
+TONY TRADE AI V3.6.1 — research-only virtual trading.
+1. Preserve existing database and run migration_v361.sql in Supabase SQL Editor.
+2. Upload files preserving .github/workflows/paper-bot.yml.
+3. Configure config.js with project URL and public anon/publishable key only.
+4. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to GitHub Actions secrets. Never publish secret keys.
+5. Run workflow manually with execute=false and inspect logs.
+6. After audit, execute=true can test virtual orders. Scheduled runs remain dry-run by default.
+The SQL function atomically records signal, journal, state and execution marker. Failed transactions roll back. Existing history is preserved, not repaired. This is not an audited production trading engine. No guaranteed returns. Public dashboard exposes virtual balances and journals. No broker integration.

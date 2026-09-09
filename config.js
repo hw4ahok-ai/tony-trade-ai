@@ -1,0 +1,4 @@
+window.TONY_CONFIG = {
+  supabaseUrl: "PASTE_SUPABASE_PROJECT_URL",
+  anonKey: "PASTE_SUPABASE_ANON_KEY"
+};

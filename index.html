@@ -1,274 +1,76 @@
 <!doctype html>
 <html lang="id">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TONY TRADE AI V3.5</title>
+<title>TONY TRADE AI V3.6</title>
 <style>
-*{box-sizing:border-box}
-body{margin:0;background:#08111f;color:#e5e7eb;font:15px system-ui}
-.wrap{max-width:1050px;margin:auto;padding:18px}
-h1{color:#22c7ff}
-.card{background:#10243d;border:1px solid #29435e;border-radius:14px;padding:18px;margin:12px 0}
-button{background:#0284c7;color:white;border:0;border-radius:8px;padding:11px 14px;margin:4px}
-button:disabled{opacity:.45}
-input,select{background:#08111f;color:white;border:1px solid #475569;border-radius:7px;padding:10px;width:100%;margin:5px 0 12px}
-.warn{background:#422006;color:#fde68a;padding:12px;border-radius:8px}
-.good{background:#12351f;color:#bbf7d0;padding:12px;border-radius:8px}
-.bad{background:#431414;color:#fecaca;padding:12px;border-radius:8px}
-small{color:#94a3b8}
-table{width:100%;border-collapse:collapse}
-td,th{padding:9px 5px;border-bottom:1px solid #334155;text-align:left}
-.scroll{overflow:auto}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
-.hidden{display:none}
-.green{color:#4ade80}.red{color:#fb7185}.amber{color:#fbbf24}
+*{box-sizing:border-box}body{margin:0;background:#08111f;color:#e5e7eb;font:15px system-ui}
+.wrap{max-width:1100px;margin:auto;padding:18px}h1{color:#22c7ff}.card{background:#10243d;border:1px solid #29435e;border-radius:14px;padding:18px;margin:12px 0}
+.warn{background:#422006;color:#fde68a;padding:12px;border-radius:8px}.good{color:#4ade80}.bad{color:#fb7185}
+button{background:#0284c7;color:#fff;border:0;border-radius:8px;padding:11px 14px}
+table{width:100%;border-collapse:collapse}td,th{padding:9px 5px;border-bottom:1px solid #334155;text-align:left}.scroll{overflow:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}small{color:#94a3b8}
 </style>
-
-<div class="wrap">
+<script src="config.js"></script>
+</head>
+<body><div class="wrap">
 <h1>◈ TONY TRADE AI</h1>
-<p>V3.5.1 · Forward Paper Trading</p>
+<p>V3.6.1 · Scheduled Forward Paper Trading</p>
+<div class="warn">UANG VIRTUAL SAJA. Tidak ada koneksi Pluang dan tidak ada order uang asli. Strategi dikunci Breakout 20 / Exit 10. Scheduler mencatat sinyal dan transaksi simulasi di database.</div>
 
-<div class="warn">
-STRATEGI TERKUNCI: Breakout 20 / Exit 10. UANG VIRTUAL SAJA. Tidak ada koneksi Pluang, tidak ada order uang asli, dan tidak ada perubahan parameter otomatis berdasarkan hasil sementara.
+<div class="card">
+<h2>Status sistem</h2>
+<p id="status">Menghubungkan database...</p>
+<button onclick="loadAll()">Refresh dashboard</button>
+</div>
+
+<div class="grid" id="accounts"></div>
+
+<div class="card">
+<h2>Sinyal terbaru</h2>
+<div class="scroll"><table><thead><tr><th>Tanggal</th><th>Aset</th><th>Sinyal</th><th>Harga</th><th>Keterangan</th></tr></thead><tbody id="signals"></tbody></table></div>
 </div>
 
 <div class="card">
-<h2>Forward Test</h2>
-<label>Aset
-<select id="asset">
-<option value="BTCUSDT">BTC/USDT</option>
-<option value="ETHUSDT">ETH/USDT</option>
-<option value="SOLUSDT">SOL/USDT</option>
-</select>
-</label>
-<button onclick="refreshAll()">Refresh & Periksa Sinyal</button>
-<p id="status">Belum diperiksa.</p>
-</div>
-
-<div class="grid">
-<div class="card"><small>Saldo virtual</small><h2 id="cash"></h2></div>
-<div class="card"><small>Ekuitas virtual</small><h2 id="equity"></h2></div>
-<div class="card"><small>P/L total</small><h2 id="pnl"></h2></div>
-<div class="card"><small>Status posisi</small><h2 id="positionState"></h2></div>
+<h2>Journal virtual</h2>
+<div class="scroll"><table><thead><tr><th>Waktu</th><th>Aset</th><th>Aksi</th><th>Harga</th><th>Unit</th><th>Biaya</th><th>Alasan</th></tr></thead><tbody id="journal"></tbody></table></div>
 </div>
 
 <div class="card">
-<h2>Sinyal terakhir</h2>
-<div id="signalBox">Belum ada data.</div>
-</div>
-
-<div class="card">
-<h2>Aturan Forward Test</h2>
-<p>Masuk BUY jika penutupan candle harian terakhir menembus harga tertinggi 20 candle sebelumnya. Keluar SELL jika penutupan candle harian terakhir turun di bawah harga terendah 10 candle sebelumnya.</p>
-<p>Eksekusi simulasi dilakukan pada harga pembukaan candle hari berikutnya yang sudah tersedia, dengan biaya 0,10% dan slippage 0,05% per sisi. Posisi maksimal 20% dari ekuitas virtual. Tidak ada leverage.</p>
-</div>
-
-<div class="card">
-<h2>Journal Forward</h2>
-<div class="scroll">
-<table>
-<thead><tr><th>Waktu</th><th>Aset</th><th>Aksi</th><th>Harga</th><th>Unit</th><th>Biaya</th><th>Alasan</th></tr></thead>
-<tbody id="journal"></tbody>
-</table>
+<h2>Cara kerja</h2>
+<p>GitHub Actions menjalankan pemeriksaan terjadwal. Sinyal dibuat dari candle harian yang sudah selesai. Jika ada BUY/SELL baru, harga simulasi memakai harga pasar saat scheduler benar-benar berjalan, kemudian ditambah slippage 0,05% dan biaya 0,10% per sisi.</p>
+<p><small>GitHub Actions tidak menjamin eksekusi pada detik yang sama setiap hari. Karena itu sistem tidak mengisi transaksi secara retroaktif pada harga open yang sudah lewat.</small></p>
 </div>
 </div>
-
-<div class="card">
-<h2>Kontrol</h2>
-<button onclick="resetForward()">Reset Forward Test</button>
-<p><small>Reset hanya menghapus data V3.5.1 pada browser ini. Data versi sebelumnya tetap terpisah.</small></p>
-</div>
-
-<div class="card">
-<h2>Catatan penting</h2>
-<p>Forward test pada GitHub Pages hanya berjalan saat Anda membuka aplikasi dan menekan Refresh & Periksa Sinyal. Ini bukan server 24 jam. Jika pembukaan pasar terlewat, order pending dibatalkan, bukan diisi mundur. Sinyal yang sama tidak akan diproses dua kali karena aplikasi menyimpan tanggal candle terakhir yang sudah diproses.</p>
-<p><small>Harga menggunakan Binance spot USDT. Ini bukan harga Pluang dan bukan kuotasi eksekusi sebenarnya.</small></p>
-</div>
-</div>
-
 <script>
-const $=x=>document.getElementById(x);
-const money=n=>Number.isFinite(n)?new Intl.NumberFormat('id-ID',{maximumFractionDigits:2}).format(n)+' USDT':'-';
-const num=n=>new Intl.NumberFormat('id-ID',{maximumFractionDigits:8}).format(n);
-const KEY='tta-v351-forward';
-const FEE=0.001, SLIP=0.0005, MAX_ALLOC=0.20;
-
-let state = loadState();
-let bars = [];
-
-function freshState(){
-  return {
-    cash:10000,
-    position:null,
-    journal:[],
-    lastProcessed:{},
-    pending:{},
-    startedAt:Date.now(),
-    lastMark:null
-  };
+const money=n=>Number.isFinite(Number(n))?new Intl.NumberFormat('id-ID',{maximumFractionDigits:2}).format(Number(n))+' USDT':'-';
+const num=n=>new Intl.NumberFormat('id-ID',{maximumFractionDigits:8}).format(Number(n));
+async function api(table,params=''){
+ if(!window.TONY_CONFIG||!TONY_CONFIG.supabaseUrl||!TONY_CONFIG.anonKey) throw Error('config.js belum diisi');
+ const r=await fetch(TONY_CONFIG.supabaseUrl+'/rest/v1/'+table+'?'+params,{
+  headers:{apikey:TONY_CONFIG.anonKey,Authorization:'Bearer '+TONY_CONFIG.anonKey}
+ });
+ if(!r.ok) throw Error(table+' HTTP '+r.status);
+ return r.json();
 }
-function loadState(){
-  try{
-    const s=JSON.parse(localStorage.getItem(KEY)||'null');
-    return s||freshState();
-  }catch(e){return freshState()}
-}
-function saveState(){
-  localStorage.setItem(KEY,JSON.stringify(state));
-}
-function fmtDate(ts){
-  return new Date(ts).toISOString().slice(0,10);
-}
-function completedDailyKlines(raw){
-  const now=Date.now();
-  const out=raw.filter(x=>x[6] < now).map(x=>({
-    openTime:x[0], closeTime:x[6],
-    o:Number(x[1]), h:Number(x[2]), l:Number(x[3]), c:Number(x[4])
-  }));
-  for(let i=0;i<out.length;i++){
-    const b=out[i];
-    if(![b.o,b.h,b.l,b.c].every(v=>Number.isFinite(v)&&v>0)) throw Error('OHLC tidak valid');
-    if(i && b.openTime-out[i-1].openTime!==86400000) throw Error('Interval candle tidak harian berurutan');
-  }
-  return out;
-}
-async function fetchBars(symbol){
-  const r=await fetch('https://api.binance.com/api/v3/klines?symbol='+symbol+'&interval=1d&limit=120',{cache:'no-store'});
-  if(!r.ok) throw Error('HTTP '+r.status);
-  const d=await r.json();
-  if(!Array.isArray(d)) throw Error('Respons data tidak valid');
-  const b=completedDailyKlines(d);
-  if(b.length<35) throw Error('Data candle tidak cukup');
-  return b;
-}
-function signalFor(b){
-  const i=b.length-1;
-  if(i<20) return {signal:'NONE',date:fmtDate(b[i].openTime),reason:'Data belum cukup'};
-  const last=b[i];
-  const prior20=b.slice(i-20,i);
-  const prior10=b.slice(i-10,i);
-  const max20=Math.max(...prior20.map(x=>x.h));
-  const min10=Math.min(...prior10.map(x=>x.l));
-  if(last.c>max20) return {signal:'BUY',date:fmtDate(last.openTime),reason:'Close > highest high 20 hari',close:last.c,max20,min10};
-  if(last.c<min10) return {signal:'SELL',date:fmtDate(last.openTime),reason:'Close < lowest low 10 hari',close:last.c,max20,min10};
-  return {signal:'HOLD',date:fmtDate(last.openTime),reason:'Tidak ada breakout/exit',close:last.c,max20,min10};
-}
-function markPrice(){
-  if(!bars.length) return null;
-  return bars.at(-1).c;
-}
-function equity(){
-  let eq=state.cash;
-  if(state.position && Number.isFinite(state.lastMark)) eq += state.position.qty*state.lastMark;
-  return eq;
-}
-function execute(symbol,side,price,reason,signalDate){
-  if(!Number.isFinite(price)||price<=0) return false;
-  if(side==='BUY'){
-    if(state.position) return false;
-    const eq=equity();
-    const allocation=Math.min(state.cash,eq*MAX_ALLOC);
-    if(allocation<=0) return false;
-    const execPrice=price*(1+SLIP);
-    const qty=allocation/(execPrice*(1+FEE));
-    const gross=qty*execPrice;
-    const fee=gross*FEE;
-    if(gross+fee>state.cash+1e-8) return false;
-    state.cash-=gross+fee;
-    state.position={symbol,qty,entryPrice:execPrice,entryDate:signalDate};
-    state.journal.unshift({t:new Date().toLocaleString('id-ID'),symbol,side:'BUY',price:execPrice,qty,fee,reason});
-    return true;
-  }
-  if(side==='SELL'){
-    if(!state.position || state.position.symbol!==symbol) return false;
-    const execPrice=price*(1-SLIP);
-    const gross=state.position.qty*execPrice;
-    const fee=gross*FEE;
-    const qty=state.position.qty;
-    state.cash+=gross-fee;
-    state.position=null;
-    state.journal.unshift({t:new Date().toLocaleString('id-ID'),symbol,side:'SELL',price:execPrice,qty,fee,reason});
-    return true;
-  }
-  return false;
-}
-async function refreshAll(){
- const symbol=$('asset').value;
- $('status').textContent='Memeriksa data dan antrean...';
+async function loadAll(){
+ const s=document.getElementById('status');s.textContent='Mengambil data...';
  try{
-  bars=await fetchBars(symbol);
-  const now=Date.now(), last=bars.at(-1);
-  const today=new Date().toISOString().slice(0,10);
-  if(fmtDate(last.openTime)>=today)throw Error('Candle hari berjalan belum final');
-  // The active position must always be marked using its own market.
-  if(state.position&&state.position.symbol!==symbol){
-   const own=await fetchBars(state.position.symbol);
-   state.lastMark=own.at(-1).c;
-  }else state.lastMark=last.c;
-  if(!state.pending)state.pending={};
-  if(!state.lastProcessed)state.lastProcessed={};
-  let messages=[];
-  // Process only candles after the forward-test start. No historical backfill.
-  const start=state.startedAt||now;
-  const first=bars.findIndex(b=>b.openTime>=start);
-  // A pending signal is executed only at the next actual daily open.
-  let pending=state.pending[symbol];
-  if(pending){
-   const next=bars.find(b=>b.openTime===pending.signalOpen+86400000);
-   if(next && next.openTime<now-60000){
-    messages.push('Sinyal kedaluwarsa: open terlewat. Tidak dieksekusi mundur.');
-    state.lastProcessed[symbol]=pending.date;
-    delete state.pending[symbol];
-   }else if(next){
-    const ok=execute(symbol,pending.side,next.o,pending.reason,pending.date);
-    messages.push(ok?pending.side+' virtual dieksekusi pada open '+fmtDate(next.openTime):'Order virtual dibatalkan: posisi atau saldo tidak sesuai.');
-    state.lastProcessed[symbol]=pending.date;
-    delete state.pending[symbol];
-   }else messages.push('Sinyal pending menunggu candle berikutnya. Aplikasi harus dibuka saat open; tidak ada server otomatis.');
-  }
-  // Never retroactively fill a signal using a price that was already known.
-  if(last.closeTime>=start && !state.pending[symbol] && state.lastProcessed[symbol]!==fmtDate(last.openTime)){
-   const sig=signalFor(bars);
-   const wantsBuy=sig.signal==='BUY'&&!state.position;
-   const wantsSell=sig.signal==='SELL'&&state.position&&state.position.symbol===symbol;
-   if(wantsBuy||wantsSell){
-    state.pending[symbol]={side:sig.signal,date:sig.date,signalOpen:last.openTime,reason:sig.reason};
-    messages.push(sig.signal+' pending untuk open hari berikutnya.');
-   }else{
-    state.lastProcessed[symbol]=sig.date;
-    messages.push('Tidak ada order baru.');
-   }
-  }
-  saveState();
-  const sig=signalFor(bars);
-  $('status').textContent='Data valid sampai '+fmtDate(last.openTime)+'. '+(messages.join(' ')||'Tidak ada eksekusi ulang.');
-  $('signalBox').textContent=symbol+' | '+sig.date+' | '+sig.signal+' | '+sig.reason+(state.pending[symbol]?' | PENDING':'');
-  render();
- }catch(e){
-  $('status').textContent='Gagal: '+e.message+'. Tidak ada transaksi virtual yang dilakukan.';
-  render();
- }
+  const [states,signals,journal]=await Promise.all([
+   api('paper_state','select=*&order=symbol.asc'),
+   api('daily_signals','select=*&order=created_at.desc&limit=20'),
+   api('paper_journal','select=*&order=created_at.desc&limit=50')
+  ]);
+  document.getElementById('accounts').innerHTML=states.map(x=>{
+   const eq=Number(x.cash)+Number(x.position_qty||0)*Number(x.last_price||0);
+   const pnl=eq-10000;
+   return '<div class="card"><small>'+x.symbol+'</small><h2>'+money(eq)+'</h2><p>Cash: '+money(x.cash)+'</p><p>Posisi: '+(Number(x.position_qty)>0?num(x.position_qty):'Tidak ada')+'</p><p>P/L: <b class="'+(pnl>=0?'good':'bad')+'">'+money(pnl)+'</b></p><small>Update: '+new Date(x.updated_at).toLocaleString('id-ID')+'</small></div>'
+  }).join('');
+  document.getElementById('signals').innerHTML=signals.map(x=>'<tr><td>'+x.signal_date+'</td><td>'+x.symbol+'</td><td>'+x.signal+'</td><td>'+money(x.close_price)+'</td><td>'+x.reason+'</td></tr>').join('')||'<tr><td colspan="5">Belum ada sinyal.</td></tr>';
+  document.getElementById('journal').innerHTML=journal.map(x=>'<tr><td>'+new Date(x.created_at).toLocaleString('id-ID')+'</td><td>'+x.symbol+'</td><td>'+x.side+'</td><td>'+money(x.price)+'</td><td>'+num(x.qty)+'</td><td>'+money(x.fee)+'</td><td>'+x.reason+'</td></tr>').join('')||'<tr><td colspan="7">Belum ada transaksi.</td></tr>';
+  s.textContent='Database terhubung. Dashboard diperbarui '+new Date().toLocaleString('id-ID');
+ }catch(e){s.textContent='Gagal: '+e.message}
 }
-function render(){
-  const eq=equity();
-  $('cash').textContent=money(state.cash);
-  $('equity').textContent=money(eq);
-  $('pnl').textContent=money(eq-10000);
-  $('positionState').textContent=state.position ? state.position.symbol+' '+num(state.position.qty) : 'Tidak ada posisi';
-  $('journal').innerHTML=state.journal.length ? state.journal.map(h=>
-    '<tr><td>'+h.t+'</td><td>'+h.symbol+'</td><td>'+h.side+'</td><td>'+money(h.price)+'</td><td>'+num(h.qty)+'</td><td>'+money(h.fee)+'</td><td>'+h.reason+'</td></tr>'
-  ).join('') : '<tr><td colspan="7">Belum ada transaksi forward.</td></tr>';
-}
-function resetForward(){
-  if(confirm('Reset seluruh data forward test V3.5.1 pada browser ini?')){
-    state=freshState();
-    saveState();
-    bars=[];
-    $('signalBox').textContent='Belum ada data.';
-    $('status').textContent='Belum diperiksa.';
-    render();
-  }
-}
-render();
-</script>
-</html>
+loadAll();
+</script></body></html>
