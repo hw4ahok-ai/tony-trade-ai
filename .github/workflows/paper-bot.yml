@@ -35,5 +35,5 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          DRY_RUN: ${{ github.event_name == 'schedule' || inputs.execute != true }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.execute != true }}
         run: node bot.js
