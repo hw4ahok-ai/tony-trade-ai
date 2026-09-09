@@ -1,0 +1,39 @@
+name: Forward Paper Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      execute:
+        description: "Execute virtual orders (false = dry run)"
+        required: true
+        type: boolean
+        default: false
+
+  schedule:
+    - cron: "15 0 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tony-paper-bot
+  cancel-in-progress: false
+
+jobs:
+  paper-trade:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run virtual strategy
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DRY_RUN: ${{ github.event_name == 'schedule' || inputs.execute != true }}
+        run: node bot.js
